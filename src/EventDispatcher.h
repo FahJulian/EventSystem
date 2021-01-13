@@ -1,58 +1,75 @@
+#pragma once
+#include <functional>
 #include <vector>
-#include "EventListener.h"
+#include <unordered_map>
 
-template<typename E>
-class EventDispatcher
-{
-private:
-    template<typename T>
-    using EventListenerFunction = void(*)(const T&);
+namespace Sonic {
 
-    template<typename E>
-    struct EventListenerMethod
-    {
-        void* const object;
-        void(*function)(void* const, const E&);
+	template<typename Event>
+	using EventListener = std::function<void(const Event&)>;
 
-        EventListenerMethod(void* const object, void(*function)(void* const, const E&))
-            : object(object), function(function)
+	class EventDispatcher
+	{
+	public:
+		template<typename Event>
+		void AddListener(EventListener<Event> listener)
+		{
+			GetListeners<Event>().push_back(listener);
+		}
+
+        template<typename F, typename Event>
+		void AddListener(F* key, void(F::*listenerMethod)(const Event&))
         {
+            EventListener<Event> listener = [&, listenerMethod](const Event& e){ (key->*listenerMethod)(e); };
+            GetListeners<Event>().push_back(listener);
         }
 
-        void operator()(const E& event)
-        {
-            function(object, event);
-        }
-    };
+		template<typename F, typename Event>
+		void AddKeyedListener(F* key, void(F::*listenerMethod)(const Event&))
+		{
+            EventListener<Event> listener = [&, listenerMethod](const Event& e){ (key->*listenerMethod)(e); };
+			auto& listeners = GetListeners<Event>();
+			listeners.push_back(listener);
+			GetKeys<Event>()[reinterpret_cast<intptr_t>(key)] = listeners.size() - 1;
+		}
 
-public:
-    void AddListener(const EventListenerFunction<E>& listener)
-    {
-        m_Functions.emplace_back(listener);
-    }
-    
-    template<typename F, void(F::*M)(const E&)>
-    void AddListener(F* const object)
-    {
-        m_Methods.emplace_back(
-            object, 
-            [](void* const p, const E& event){ 
-                // Cast the void* back to F* and then call the event method on it
-                (static_cast<F* const>(p)->*M)(event); 
-            }
-        );
-    }
+		template<typename Event, typename F>
+		void RemoveKeyedListener(F* object)
+		{
+			auto& keys = GetKeys<Event>();
+			auto& listeners = GetListeners<Event>();
 
-    void Dispatch(const E& event)
-    {
-        for (int i = 0; i < m_Methods.size(); i++)
-            m_Methods.at(i)(event);
+			intptr_t key = reinterpret_cast<intptr_t>(object);
+			int index = keys[key];
+			keys.erase(key);
+			listeners.erase(listeners.begin() + index);
 
-        for (int i = 0; i < m_Functions.size(); i++)
-            m_Functions.at(i)(event);
-    }
+			for (auto& [_, value] : keys)
+				if (value > index)
+					value--;
+		}
 
-private:
-    std::vector<EventListenerMethod<E>> m_Methods;
-    std::vector<EventListenerFunction<E>> m_Functions;
-};
+		template<typename Event>
+		void DispatchEvent(const Event& e)
+		{
+			for (EventListener<Event>& listener : GetListeners<Event>())
+				listener(e);
+		}
+
+	private:
+		template<typename Event>
+		std::vector<EventListener<Event>>& GetListeners()
+		{
+			static std::vector<EventListener<Event>> listeners;
+			return listeners;
+		}
+
+		template<typename Event>
+		std::unordered_map<intptr_t, int>& GetKeys()
+		{
+			static std::unordered_map<intptr_t, int> keys;
+			return keys;
+		}
+	};
+
+}
