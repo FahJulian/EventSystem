@@ -20,14 +20,14 @@ namespace Sonic {
         template<typename F, typename Event>
 		void AddListener(F* key, void(F::*listenerMethod)(const Event&))
         {
-            EventListener<Event> listener = [&, listenerMethod](const Event& e){ (key->*listenerMethod)(e); };
+            EventListener<Event> listener = [key, listenerMethod](const Event& e){ (key->*listenerMethod)(e); };
             GetListeners<Event>().push_back(listener);
         }
 
 		template<typename F, typename Event>
 		void AddKeyedListener(F* key, void(F::*listenerMethod)(const Event&))
 		{
-            EventListener<Event> listener = [&, listenerMethod](const Event& e){ (key->*listenerMethod)(e); };
+            EventListener<Event> listener = [key, listenerMethod](const Event& e){ (key->*listenerMethod)(e); };
 			auto& listeners = GetListeners<Event>();
 			listeners.push_back(listener);
 			GetKeys<Event>()[reinterpret_cast<intptr_t>(key)] = listeners.size() - 1;
